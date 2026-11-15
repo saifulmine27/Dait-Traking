@@ -443,6 +443,57 @@ var it=Array.isArray(res)?res:(res&&res.items)||[];ai=it.filter(function(x){retu
 aiSt=ai.length?"AI এর আনুমানিক হিসাব। ঠিক মনে হলে যোগ করুন।":"খাবার চেনা যায়নি, আবার চেষ্টা করুন।";if(!ai.length)ai=null}
 catch(e){aiSt="AI ব্যর্থ: "+String(e&&e.message||"আবার চেষ্টা করুন").slice(0,140)}
 render()}
+  async function ask(prompt, blob){
+  var img = blob ? await b64(blob) : null;
+  var r, j, t;
+  
+  if(GP == "claude"){
+    var c = [];
+    if(img) c.push({type:"image", source:{type:"base64", media_type:"image/jpeg", data:img}});
+    c.push({type:"text", text:prompt});
+    
+    r = await fetch("https://diet-tracker-ai.saifulmine27.workers.dev/", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        provider: "claude",
+        prompt: prompt,
+        model: GM,
+        image: img
+      })
+    });
+    j = await r.json();
+    if(!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    t = j.content?.[0]?.text || "";
+  } else {
+    // আপনার Cloudflare Worker প্রক্সি লিংক দিয়ে জেমিনির রিকোয়েস্ট পাঠানো
+    var proxyUrl = "https://diet-tracker-ai.saifulmine27.workers.dev/";
+    
+    r = await fetch(proxyUrl, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        provider: "gemini",
+        prompt: prompt,
+        model: GM,
+        image: img // ছবিসহ পাঠালে সেটিও Worker-এ চলে যাবে
+      })
+    });
+    
+    j = await r.json();
+    if(!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    
+    // প্রক্সি থেকে আসা রেসপন্স থেকে টেক্সট বের করে নেওয়া
+    t = ((j.candidates || [])[0] || {content: {parts: []}}).content.parts.map(function(p){ return p.text || ""; }).join("");
+  }
+  
+  try {
+    return JSON.parse(t);
+  } catch(e) {
+    var m = t.match(/\{[\s\S]*\}/) || t.match(/\[[\s\S]*\]/);
+    return JSON.parse(m[0]);
+  }
+}
 
 async function analyzeT(){var t=aiTx.trim();ai=null;aiImg=null;if(!t){aiSt="আগে কী খেয়েছেন লিখুন।";return render()}aiSt="load";render();
 try{if(AIURL?!GU:!GK){aiSt=AIURL?"AI ব্যবহার করতে আগে ওজন ট্যাবে Google দিয়ে সাইন ইন করুন।":"আগে ওজন ট্যাবের AI সেটিংসে API key বসান।";return render()}
